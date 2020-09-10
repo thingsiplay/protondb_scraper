@@ -116,7 +116,6 @@ with Firefox(executable_path='/usr/local/bin/geckodriver',
         for game_container in body.find_elements(By.CSS_SELECTOR, 'div[class*="GameCell__Container-"]'):
             element_title = game_container.find_element(By.CSS_SELECTOR, 'span[class^="GameSlice__Title"]')
             element_summary = game_container.find_element(By.CSS_SELECTOR, 'span[class^="Summary__GrowingSpan"]')
-            #element_expander = game_container.find_element(By.CSS_SELECTOR, 'span[class^="GameSlice__MarginRight]')
             element_expander = game_container.find_element(By.CSS_SELECTOR, 'div[class*="GameSlice__Expander-"]')
 
             steam_appid = os.path.basename(element_title.find_element(By.CSS_SELECTOR, 'a').get_attribute('href'))
