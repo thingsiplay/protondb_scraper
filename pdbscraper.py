@@ -30,9 +30,12 @@
 
 import argparse
 import os.path
+import subprocess
 import sys
 import json
 import datetime
+from urllib.request import urlopen
+from urllib.parse import urlparse
 from time import sleep
 
 from selenium import webdriver
@@ -78,7 +81,7 @@ def get_arguments():
              'for faster loading.  Includes preventing images from loading '
              'and other stuff.  Default is disabled.')
     parser.add_argument(
-        '--source', '-u', metavar='URL', required=False, type=str,
+        '--source', metavar='URL', required=False, type=str,
         help='Starting page to scrape.  Additional url key and values are '
              'added.  Normally this does not need to be changed, but can be '
              'required in the future.  Defaults to: '
@@ -126,8 +129,9 @@ def get_arguments():
     parser.add_argument(
         '--fast', action='store_true', required=False,
         help='Preset to overwrite a few settings for faster operating. '
-             'Forces optimize settings and sets wait to 0.1.  Also a few '
-             'extra checks are skipped too.  Highest priority.')
+             'Forces optimize settings and sets wait to 0.1.  Disables '
+             'validation for settings error checking and skips a few '
+             'other lines.  Highest priority.')
     # Convert to dict.
     parser_dict = vars(parser.parse_args())
     # Special handling of store_true parameters.  Convert false values to None.
@@ -219,6 +223,98 @@ def get_settings(arguments_settings):
     return settings
 
 
+def validate_settings(settings):
+    """ Test suite to validate and settings for values and types.
+
+        Raises a general Exception on any error.
+
+        Parameters
+        ----------
+        settings : dict
+            The application settings created previously.
+    """
+
+    def test_is_bool(var):
+        """ Check if var is a bool. """
+        if not isinstance(settings[var], bool):
+            msg = f'Setting "{var}" must be a bool:'
+            raise Exception(msg, settings[var])
+
+    def test_is_between(var, types, min, max):
+        """ Check for type and if var is between two values. """
+        if not isinstance(settings[var], types):
+            msg = f'Setting "{var}" must be {types}.'
+            raise Exception(msg, settings[var])
+        if not min <= settings[var] <= max:
+            msg = f'Setting "{var}" too low or high.'
+            raise Exception(msg, settings[var])
+
+    def test_is_path(var, allow_none_blank, exist):
+        """ Looks like a path and optionally check type and if exists."""
+        if allow_none_blank and settings[var] is None or settings[var] == '':
+            return 1
+        if not isinstance(settings[var], str):
+            msg = f'Setting "{var}" must be a string.'
+            raise Exception(msg, settings[var])
+        if not os.path.basename(settings[var]):
+            msg = f'Setting "{var}" does not look like a path.'
+            raise Exception(msg, settings[var])
+        if exist == 'file' and not os.path.isfile(settings[var]):
+            msg = f'Setting "{var}" file does not exist.'
+            raise Exception(msg, settings[var])
+        if exist == 'dir' and not os.path.isdir(settings[var]):
+            msg = f'Setting "{var}" directory does not exist.'
+            raise Exception(msg, settings[var])
+        if exist and not os.path.exists(settings[var]):
+            msg = f'Setting "{var}" directory does not exist.'
+            raise Exception(msg, settings[var])
+
+    def test_is_url(var, exist):
+        """ Looks like an url and optinally check if webpage exists. """
+        if urlparse(settings[var]).netloc == '':
+            msg = f'Setting "{var}" does not look like an url.'
+            raise Exception(msg, settings[var])
+        if exist and urlopen(settings[var]).getcode() >= 400:
+            msg = f'Setting "{var}" webpage does not exist.'
+            raise Exception(msg, settings[var])
+
+    def test_is_command(var):
+        """ Check if its a valid command. """
+        command = f'command -v "{settings[var]}"'
+        output = subprocess.run(
+            command, shell=True, check=True, encoding='utf-8',
+            stdout=subprocess.PIPE).stdout
+        if not output:
+            msg = f'Setting "{var}" command does not exist.'
+            raise Exception(msg, settings[var])
+
+    def test_is_instringlist(var, list):
+        """ Check if string is in a list of strings. """
+        if not isinstance(settings[var], str):
+            msg = f'Setting "{var}" must be a string.'
+        if not settings[var] in list:
+            msg = f'Setting "{var}" is not a valid type.'
+            raise Exception(msg, settings[var])
+
+    test_is_path('config', True, 'file')
+    test_is_path('output', True, False)
+    test_is_command('driver')
+    test_is_bool('optimize')
+    test_is_url('source', True)
+    test_is_instringlist('sort', ['recentlyImproved', 'wilsonRating',
+                                  'playerCount', 'userScore', 'mostBorked',
+                                  'fixWanted'])
+    test_is_bool('native')
+    test_is_between('maxpages', int, 1, 200)
+    test_is_between('initpage', int, 0, 100)
+    test_is_between('pagedown', int, 0, 50)
+    test_is_between('wait', (float, int), 0.1, 30)
+    test_is_bool('printconfig')
+    test_is_bool('test')
+    test_is_bool('fast')
+    return
+
+
 # https://stackoverflow.com/questions/7157994/do-not-want-the-images-to-load-and-css-to-render-on-firefox-in-selenium-webdrive
 # by Eray Erdin
 def get_firefox_profile(optimize=True):
@@ -303,8 +399,8 @@ def create_database(settings):
         created fully.  Then all game container are analyzed to read out
         the desired information about the games.
 
-        All sub functions inherit settings argument automatically and do
-        not need explicit parameters.
+        Note: All sub functions (indicated by name starting with 'this_')
+        inherit settings and do not need explicit parameter.
 
         Parameters
         ----------
@@ -500,6 +596,8 @@ def main():
     # Preparation.
     arguments = get_arguments()
     settings = get_settings(arguments)
+    if not settings['fast']:
+        validate_settings(settings)
     # After creating and displaying the settings, it shouldn't be modified.
     if settings['printconfig']:
         print(get_jsonstring(settings))
