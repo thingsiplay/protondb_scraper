@@ -303,6 +303,9 @@ def create_database(settings):
         created fully.  Then all game container are analyzed to read out
         the desired information about the games.
 
+        All sub functions inherit settings argument automatically and do
+        not need explicit parameters.
+
         Parameters
         ----------
         settings : dict
@@ -314,7 +317,7 @@ def create_database(settings):
             Each element in the list is a dict of game data.
     """
 
-    def get_game_data(game_container):
+    def this_get_game_data(game_container):
         """ Extract game specific data for each container. """
         # title and appid
         css = 'span[class^="GameSlice__Title"]'
@@ -338,7 +341,7 @@ def create_database(settings):
         game_data['reports'] = reports_count
         return game_data
 
-    def page_select_layout_cell(driver):
+    def this_page_select_layout_cell(driver):
         """ Finds and clicks layout switcher to 'cell'-mode. """
         # Make sure cell is selected, not card.
         body = driver.find_element_by_tag_name('body')
@@ -352,7 +355,7 @@ def create_database(settings):
         sleep(settings['wait'])
         return svg
 
-    def page_scroll_down(driver, settings):
+    def this_page_scroll_down(driver):
         """ Sends page down key periodically to reach bottom. """
         # Scroll down, so additional DOM data is loaded up into browser.
         html = driver.find_element(By.CSS_SELECTOR, 'html')
@@ -361,21 +364,21 @@ def create_database(settings):
             sleep(settings['wait'])
         return html
 
-    def page_load(url):
+    def this_page_load(url):
         """ Loads driver from url and waits until its ready. """
+        driver.implicitly_wait(5)  # !Do not mix with WebDriverWait!
         driver.get(url)
         sleep(1)
-        if not settings['fast']:
-            sleep(settings['wait'])
         # Make sure to continue only, if page is loaded up.
         css = 'div[class*="GameLayout__Container"]'
-        for _ in range(5):
-            sleep(settings['wait'])
-            try:
-                if driver.find_element(By.CSS_SELECTOR, css):
-                    break
-            except NoSuchElementException:
-                pass
+        if not settings['fast']:
+            for _ in range(5):
+                sleep(settings['wait'])
+                try:
+                    if driver.find_element(By.CSS_SELECTOR, css):
+                        break
+                except NoSuchElementException:
+                    pass
         return driver
 
     # database will be a list of game entries, filled up by analyzing pages.
@@ -391,16 +394,15 @@ def create_database(settings):
         for url in build_url_list(settings):
             # Load page and scroll down slowly, to ensure all DOM data is
             # loaded up into browser.
-            driver = page_load(url)
+            driver = this_page_load(url)
             if not settings['fast']:
-                driver.implicitly_wait(1)  # !Do not mix with WebDriverWait!
-                page_select_layout_cell(driver)
-            html = page_scroll_down(driver, settings)
+                this_page_select_layout_cell(driver)
+            html = this_page_scroll_down(driver)
             # Analyze every game container.  Layout needs to be in type="cell"
             # mode, not in type="card".  Currently this is the default.
             css = 'div[class*="GameCell__Container-"]'
             for game_container in html.find_elements(By.CSS_SELECTOR, css):
-                database.append(get_game_data(game_container))
+                database.append(this_get_game_data(game_container))
     return database
 
 
